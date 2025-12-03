@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 import numpy as np
 import torch
+import cv2
 from PIL import Image
 from sklearn.cluster import DBSCAN
 from sklearn.metrics.pairwise import cosine_distances
@@ -162,6 +163,32 @@ class LandmarkDatasetCleaner:
         
         return candidates
     
+    def detect_bw_anomaly(self, image_path, bw_saturation_threshold=0.05):
+        try:
+            with open(image_path, 'rb') as f:
+                image_data = f.read()
+            
+            img = cv2.imdecode(np.frombuffer(image_data, np.uint8), cv2.IMREAD_COLOR)
+
+            if img is None:
+                return None, 0.0
+
+            # Проверка на Ч/Б
+            img_hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+            # Канал насыщенности (S) - это второй канал в HSV
+            saturation_channel = img_hsv[:, :, 1] / 255.0  # Нормализуем к [0, 1]
+            mean_saturation = np.mean(saturation_channel)
+
+            if mean_saturation < bw_saturation_threshold:
+                # Уверенность обратно пропорциональна насыщенности
+                confidence = 1.0 - mean_saturation
+                return "bw", confidence
+
+        except Exception as e:
+            print(f"Ошибка при обработке {image_path.name}: {e}")
+
+        return None, 0.0
+    
     def create_candidates_folder(self, city_path, candidates):
         candidates_dir = city_path / self.candidates_folder_name
         candidates_dir.mkdir(exist_ok=True)
@@ -177,8 +204,9 @@ class LandmarkDatasetCleaner:
             new_name = f"{original_stem}_{confidence_str}_{candidate.reason}{original_suffix}"
             new_path = candidates_dir / new_name
             
-            # Копируем (не перемещаем!) файл
-            shutil.copy2(candidate.original_path, new_path)
+            # Копируем, только если файла еще нет в папке кандидатов
+            if not new_path.exists():
+                shutil.copy2(candidate.original_path, new_path)
     
     def process_city(self, city_path):
         print(f"Обработка города: {city_path.name}")
@@ -201,7 +229,21 @@ class LandmarkDatasetCleaner:
             if candidates:
                 print(f"Найдено кандидатов на удаление: {len(candidates)}")
             all_candidates.extend(candidates)
-            processed_landmarks += 1
+            
+            # Ищем Ч/Б фото
+            color_artifact_candidates = []
+            for photo_path in photo_paths:
+                reason, confidence = self.detect_bw_anomaly(photo_path)
+                if reason:
+                    color_artifact_candidates.append(PhotoCandidate(
+                        original_path=photo_path,
+                        confidence=confidence,
+                        reason=reason
+                    ))
+            all_candidates.extend(color_artifact_candidates)
+            print(f"Найдено цветовых аномалий: {len(color_artifact_candidates)}")
+
+        processed_landmarks += 1
         
         # Создаём папку с кандидатами
         if all_candidates:
