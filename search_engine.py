@@ -41,8 +41,14 @@ class SearchEngine:
     def _get_text_vector(self, text):
         return self.text_model.encode(text, convert_to_numpy=True, normalize_embeddings=True).astype('float32')
 
-    def _get_image_vector(self, image_path):
-        image = Image.open(image_path).convert("RGB")
+    def _get_image_vector(self, image_input):
+        if isinstance(image_input, str):
+            image = Image.open(image_input).convert("RGB")
+        elif isinstance(image_input, Image.Image):
+            image = image_input.convert("RGB")
+        else:
+            raise ValueError("Неподдерживаемый тип входных данных. Ожидается путь к файлу (str) или PIL Image.")
+
         return self.img_model.encode(image, convert_to_numpy=True, normalize_embeddings=True).astype('float32')
 
     def search_by_text(self, query, k=5):
@@ -64,7 +70,7 @@ class SearchEngine:
         return results
 
     def search_by_image(self, image_path, k=20):
-        print(f"\nПоиск похожих на изображение: {image_path}")
+        print("\nПоиск похожих на изображение")
         query_vector = self._get_image_vector(image_path)
         query_vector = query_vector.reshape(1, -1)
         
