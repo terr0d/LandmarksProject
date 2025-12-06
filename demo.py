@@ -1,4 +1,5 @@
 import gradio as gr
+import os
 from search_engine import SearchEngine
 
 engine = SearchEngine('vector_index')
@@ -17,16 +18,18 @@ def search_by_image_interface(image):
     return names_str, kinds_str
 
 def search_by_text_interface(query):
-    if engine is None:
-        return []
-
     search_results = engine.search_by_text(query, k=5)
     
     # Gradio Gallery ожидает список кортежей: (путь_к_изображению, подпись)
     gallery_items = []
     for res in search_results:
+        image_path = res['image_path']
         caption = f"{res['name']} ({res['city']})"
-        gallery_items.append((res['image_path'], caption))
+        
+        if os.path.exists(image_path):
+            gallery_items.append((image_path, caption))
+        else:
+            gallery_items.append(('src/placeholder.jpg', caption))
         
     return gallery_items
 
